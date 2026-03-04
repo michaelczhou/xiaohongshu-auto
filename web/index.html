@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>小红书自动发布系统</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #ff6b6b 0%, #ff8e8e 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: white;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+        .panel {
+            background: white;
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+        }
+        .panel h2 {
+            color: #ff6b6b;
+            margin-bottom: 16px;
+            font-size: 1.5em;
+        }
+        .form-group {
+            margin-bottom: 16px;
+        }
+        label {
+            display: block;
+            margin-bottom: 6px;
+            color: #555;
+            font-weight: 500;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #eee;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+        input:focus, textarea:focus {
+            outline: none;
+            border-color: #ff6b6b;
+        }
+        textarea {
+            min-height: 100px;
+            resize: vertical;
+        }
+        button {
+            background: linear-gradient(135deg, #ff6b6b 0%, #ff8e8e 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(255,107,107,0.4);
+        }
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .btn-group {
+            display: flex;
+            gap: 12px;
+            margin-top: 16px;
+        }
+        .result-box {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 16px;
+            margin-top: 16px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .task-item {
+            background: white;
+            border-left: 4px solid #ff6b6b;
+            padding: 12px;
+            margin-bottom: 12px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+        .task-item.success { border-left-color: #51cf66; }
+        .task-item.failed { border-left-color: #ff6b6b; }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            text-align: center;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        .stat-value {
+            font-size: 2em;
+            font-weight: bold;
+            color: #ff6b6b;
+        }
+        .stat-label {
+            color: #888;
+            margin-top: 4px;
+        }
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📕 小红书自动发布系统</h1>
+        
+        <!-- 统计 -->
+        <div class="stats" id="stats">
+            <div class="stat-card">
+                <div class="stat-value" id="stat-total">0</div>
+                <div class="stat-label">总任务</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="stat-success">0</div>
+                <div class="stat-label">成功</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="stat-failed">0</div>
+                <div class="stat-label">失败</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="stat-pending">0</div>
+                <div class="stat-label">进行中</div>
+            </div>
+        </div>
+
+        <!-- 配置 -->
+        <div class="panel">
+            <h2>⚙️ 配置</h2>
+            <div class="form-group">
+                <label>LLM API Key</label>
+                <input type="password" id="llm-api-key" placeholder="sk-...">
+            </div>
+            <div class="form-group">
+                <label>LLM Base URL</label>
+                <input type="text" id="llm-base-url" value="https://api.openai.com/v1">
+            </div>
+            <div class="form-group">
+                <label>模型</label>
+                <input type="text" id="llm-model" value="gpt-4o">
+            </div>
+            <div class="form-group">
+                <label>小红书 MCP 地址</label>
+                <input type="text" id="xhs-mcp-url" value="http://localhost:18060/mcp">
+            </div>
+            <button onclick="saveConfig()">💾 保存配置</button>
+        </div>
+
+        <!-- 生成内容 -->
+        <div class="panel">
+            <h2>✨ 生成内容</h2>
+            <div class="form-group">
+                <label>主题（每行一个，支持批量）</label>
+                <textarea id="topic-input" placeholder="输入主题，例如：&#10;AI 工具推荐&#10;效率提升技巧&#10;职场干货"></textarea>
+            </div>
+            <div class="btn-group">
+                <button onclick="generate()" id="gen-btn">🚀 生成并发布</button>
+                <button onclick="clearInput()" style="background: #888;">清空</button>
+            </div>
+            <div class="result-box" id="result"></div>
+        </div>
+
+        <!-- 历史记录 -->
+        <div class="panel">
+            <h2>📜 历史记录</h2>
+            <button onclick="loadHistory()" style="margin-bottom: 12px;">🔄 刷新</button>
+            <div id="history"></div>
+        </div>
+    </div>
+
+    <script>
+        // 加载配置
+        async function loadConfig() {
+            const res = await fetch('/api/config');
+            const config = await res.json();
+            if(config.llm_base_url) document.getElementById('llm-base-url').value = config.llm_base_url;
+            if(config.llm_model) document.getElementById('llm-model').value = config.llm_model;
+            if(config.xhs_mcp_url) document.getElementById('xhs-mcp-url').value = config.xhs_mcp_url;
+        }
+
+        // 保存配置
+        async function saveConfig() {
+            const config = {
+                llm_api_key: document.getElementById('llm-api-key').value,
+                llm_base_url: document.getElementById('llm-base-url').value,
+                llm_model: document.getElementById('llm-model').value,
+                xhs_mcp_url: document.getElementById('xhs-mcp-url').value,
+            };
+            const res = await fetch('/api/config', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(config)
+            });
+            alert('配置已保存！');
+        }
+
+        // 生成内容
+        async function generate() {
+            const input = document.getElementById('topic-input').value.trim();
+            if(!input) return alert('请输入主题');
+
+            const topics = input.split('\n').filter(t => t.trim());
+            const btn = document.getElementById('gen-btn');
+            const resultDiv = document.getElementById('result');
+            
+            btn.disabled = true;
+            btn.innerHTML = '<span class="loading"></span> 生成中...';
+            resultDiv.innerHTML = '';
+
+            try {
+                const url = topics.length > 1 ? '/api/batch-generate' : '/api/generate';
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({topics})
+                });
+                const data = await res.json();
+                
+                if(topics.length === 1) {
+                    resultDiv.innerHTML = `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+                } else {
+                    resultDiv.innerHTML = `<p>批量完成 ${data.total} 个任务</p>`;
+                }
+                
+                loadStats();
+                loadHistory();
+            } catch(e) {
+                resultDiv.innerHTML = `<p style="color:red">错误：${e.message}</p>`;
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '🚀 生成并发布';
+            }
+        }
+
+        // 加载历史
+        async function loadHistory() {
+            const res = await fetch('/api/history');
+            const history = await res.json();
+            const div = document.getElementById('history');
+            
+            if(history.length === 0) {
+                div.innerHTML = '<p>暂无记录</p>';
+                return;
+            }
+            
+            div.innerHTML = history.map(t => `
+                <div class="task-item ${t.status}">
+                    <strong>${t.topic}</strong>
+                    <p>${new Date(t.created_at).toLocaleString()}</p>
+                    <p>状态：${t.status}</p>
+                </div>
+            `).join('');
+        }
+
+        // 加载统计
+        async function loadStats() {
+            const res = await fetch('/api/stats');
+            const stats = await res.json();
+            document.getElementById('stat-total').textContent = stats.total || 0;
+            document.getElementById('stat-success').textContent = stats.success || 0;
+            document.getElementById('stat-failed').textContent = stats.failed || 0;
+            document.getElementById('stat-pending').textContent = stats.pending || 0;
+        }
+
+        function clearInput() {
+            document.getElementById('topic-input').value = '';
+        }
+
+        // 初始化
+        loadConfig();
+        loadStats();
+        loadHistory();
+    </script>
+</body>
+</html>
