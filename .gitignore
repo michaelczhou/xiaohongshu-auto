@@ -24,6 +24,9 @@ cache/*.json
 # Cookies
 cookies/
 
+# Uploads
+uploads/
+
 # IDE
 .vscode/
 .idea/

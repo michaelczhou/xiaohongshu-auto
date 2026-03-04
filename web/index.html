@@ -137,11 +137,170 @@
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
+        /* 模式切换 */
+        .mode-tabs {
+            display: flex;
+            gap: 0;
+            margin-bottom: 20px;
+        }
+        .mode-tab {
+            flex: 1;
+            padding: 16px 24px;
+            background: rgba(255,255,255,0.3);
+            border: none;
+            color: white;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            border-radius: 0;
+        }
+        .mode-tab:first-child { border-radius: 12px 0 0 12px; }
+        .mode-tab:last-child { border-radius: 0 12px 12px 0; }
+        .mode-tab.active {
+            background: white;
+            color: #ff6b6b;
+            transform: none;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+        }
+        .mode-tab:hover:not(.active) {
+            background: rgba(255,255,255,0.5);
+            transform: none;
+        }
+        .mode-content { display: none; }
+        .mode-content.active { display: block; }
+        /* 图片上传 */
+        .upload-zone {
+            border: 2px dashed #ddd;
+            border-radius: 12px;
+            padding: 32px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            background: #fafafa;
+        }
+        .upload-zone:hover, .upload-zone.dragover {
+            border-color: #ff6b6b;
+            background: #fff5f5;
+        }
+        .upload-zone p { color: #999; margin-top: 8px; }
+        .upload-zone .icon { font-size: 48px; }
+        .image-preview {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-top: 16px;
+        }
+        .image-preview .img-item {
+            position: relative;
+            width: 120px;
+            height: 120px;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .image-preview .img-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .image-preview .img-item .remove-btn {
+            position: absolute;
+            top: 4px;
+            right: 4px;
+            width: 24px;
+            height: 24px;
+            background: rgba(255,0,0,0.7);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 14px;
+            line-height: 24px;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        /* Markdown 编辑器 */
+        .editor-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+        .editor-pane h3 {
+            color: #666;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+        .editor-pane textarea {
+            min-height: 300px;
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+        .preview-pane {
+            background: #fafafa;
+            border: 2px solid #eee;
+            border-radius: 8px;
+            padding: 16px;
+            min-height: 300px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-word;
+            font-size: 14px;
+            line-height: 1.8;
+            color: #333;
+        }
+        .tags-input {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            padding: 8px;
+            border: 2px solid #eee;
+            border-radius: 8px;
+            min-height: 44px;
+            align-items: center;
+            cursor: text;
+        }
+        .tags-input:focus-within { border-color: #ff6b6b; }
+        .tag-chip {
+            display: inline-flex;
+            align-items: center;
+            background: linear-gradient(135deg, #ff6b6b, #ff8e8e);
+            color: white;
+            padding: 4px 10px;
+            border-radius: 16px;
+            font-size: 13px;
+            gap: 4px;
+        }
+        .tag-chip .tag-remove {
+            cursor: pointer;
+            font-weight: bold;
+            margin-left: 4px;
+        }
+        .tags-input input {
+            border: none;
+            outline: none;
+            flex: 1;
+            min-width: 120px;
+            padding: 4px;
+            font-size: 14px;
+        }
+        @media (max-width: 768px) {
+            .editor-container { grid-template-columns: 1fr; }
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>📕 小红书自动发布系统</h1>
+
+        <!-- 模式切换 -->
+        <div class="mode-tabs">
+            <button class="mode-tab active" onclick="switchMode('auto')">🤖 AI 自动模式</button>
+            <button class="mode-tab" onclick="switchMode('manual')">✍️ 手动模式</button>
+        </div>
         
         <!-- 统计 -->
         <div class="stats" id="stats">
@@ -198,6 +357,9 @@
             </div>
         </div>
 
+        <!-- ========== AI 自动模式 ========== -->
+        <div id="mode-auto" class="mode-content active">
+
         <!-- 生成内容 -->
         <div class="panel">
             <h2>✨ 生成内容</h2>
@@ -212,6 +374,54 @@
             <div class="result-box" id="result"></div>
         </div>
 
+        </div><!-- /mode-auto -->
+
+        <!-- ========== 手动模式 ========== -->
+        <div id="mode-manual" class="mode-content">
+
+        <div class="panel">
+            <h2>📸 上传图片</h2>
+            <div class="upload-zone" id="upload-zone" onclick="document.getElementById('file-input').click()">
+                <div class="icon">📷</div>
+                <p>点击或拖拽图片到此处上传</p>
+                <p style="font-size:12px;color:#bbb;">支持 JPG / PNG / WEBP，最多 9 张</p>
+            </div>
+            <input type="file" id="file-input" multiple accept="image/*" style="display:none" onchange="handleFileSelect(event)">
+            <div class="image-preview" id="image-preview"></div>
+        </div>
+
+        <div class="panel">
+            <h2>📝 编辑内容 <span style="font-size:13px;color:#999;font-weight:normal;">（支持 Markdown）</span></h2>
+            <div class="form-group">
+                <label>标题</label>
+                <input type="text" id="manual-title" placeholder="输入笔记标题（20字以内，吸引眼球）" maxlength="20">
+                <div style="text-align:right;font-size:12px;color:#bbb;margin-top:4px;"><span id="title-count">0</span>/20</div>
+            </div>
+            <div class="editor-container">
+                <div class="editor-pane">
+                    <h3>✏️ Markdown 编辑</h3>
+                    <textarea id="manual-content" placeholder="# 标题&#10;&#10;正文内容，支持 **加粗**、*斜体*、列表等 Markdown 语法...&#10;&#10;- 列表项 1&#10;- 列表项 2&#10;&#10;> 引用文字&#10;&#10;1. 有序列表&#10;2. 第二项"></textarea>
+                </div>
+                <div class="editor-pane">
+                    <h3>👀 小红书预览</h3>
+                    <div class="preview-pane" id="md-preview">预览将显示在这里...</div>
+                </div>
+            </div>
+            <div class="form-group" style="margin-top:16px;">
+                <label>标签（按回车添加）</label>
+                <div class="tags-input" id="tags-container" onclick="document.getElementById('tag-input').focus()">
+                    <input type="text" id="tag-input" placeholder="输入标签后按回车…">
+                </div>
+            </div>
+            <div class="btn-group">
+                <button onclick="manualPublish()" id="manual-pub-btn">🚀 发布到小红书</button>
+                <button onclick="clearManual()" style="background:#888;">🗑️ 清空</button>
+            </div>
+            <div class="result-box" id="manual-result"></div>
+        </div>
+
+        </div><!-- /mode-manual -->
+
         <!-- 历史记录 -->
         <div class="panel">
             <h2>📜 历史记录</h2>
@@ -221,7 +431,15 @@
     </div>
 
     <script>
-        // 加载配置
+        // ===== 模式切换 =====
+        function switchMode(mode) {
+            document.querySelectorAll('.mode-tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.mode-content').forEach(c => c.classList.remove('active'));
+            document.getElementById(`mode-${mode}`).classList.add('active');
+            event.target.classList.add('active');
+        }
+
+        // ===== 配置 =====
         async function loadConfig() {
             const res = await fetch('/api/config');
             const config = await res.json();
@@ -230,7 +448,6 @@
             document.getElementById('headless-mode').checked = !!config.headless;
         }
 
-        // 保存配置
         async function saveConfig() {
             const config = {
                 llm_api_key: document.getElementById('llm-api-key').value,
@@ -238,7 +455,7 @@
                 llm_model: document.getElementById('llm-model').value,
                 headless: document.getElementById('headless-mode').checked,
             };
-            const res = await fetch('/api/config', {
+            await fetch('/api/config', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify(config)
@@ -246,7 +463,7 @@
             alert('配置已保存！');
         }
 
-        // 登录相关
+        // ===== 登录 =====
         async function checkLogin() {
             const div = document.getElementById('login-status');
             div.innerHTML = '⏳ 检查中...';
@@ -283,19 +500,16 @@
             }
         }
 
-        // 生成内容
+        // ===== AI 自动模式 =====
         async function generate() {
             const input = document.getElementById('topic-input').value.trim();
             if(!input) return alert('请输入主题');
-
             const topics = input.split('\n').filter(t => t.trim());
             const btn = document.getElementById('gen-btn');
             const resultDiv = document.getElementById('result');
-            
             btn.disabled = true;
             btn.innerHTML = '<span class="loading"></span> 生成中...';
             resultDiv.innerHTML = '';
-
             try {
                 let res;
                 if(topics.length > 1) {
@@ -312,15 +526,12 @@
                     });
                 }
                 const data = await res.json();
-                
                 if(topics.length === 1) {
                     resultDiv.innerHTML = `<pre>${JSON.stringify(data, null, 2)}</pre>`;
                 } else {
                     resultDiv.innerHTML = `<p>批量完成 ${data.total} 个任务</p>`;
                 }
-                
-                loadStats();
-                loadHistory();
+                loadStats(); loadHistory();
             } catch(e) {
                 resultDiv.innerHTML = `<p style="color:red">错误：${e.message}</p>`;
             } finally {
@@ -329,17 +540,193 @@
             }
         }
 
-        // 加载历史
+        function clearInput() { document.getElementById('topic-input').value = ''; }
+
+        // ===== 手动模式：图片上传 =====
+        let uploadedFiles = [];  // {filename, path, url}
+
+        const uploadZone = document.getElementById('upload-zone');
+        uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('dragover'); });
+        uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('dragover'));
+        uploadZone.addEventListener('drop', e => {
+            e.preventDefault();
+            uploadZone.classList.remove('dragover');
+            if(e.dataTransfer.files.length) uploadFiles(e.dataTransfer.files);
+        });
+
+        function handleFileSelect(e) {
+            if(e.target.files.length) uploadFiles(e.target.files);
+            e.target.value = '';
+        }
+
+        async function uploadFiles(fileList) {
+            if(uploadedFiles.length + fileList.length > 9) {
+                return alert('最多上传 9 张图片');
+            }
+            const formData = new FormData();
+            for(const f of fileList) formData.append('files', f);
+            try {
+                const res = await fetch('/api/upload', { method: 'POST', body: formData });
+                const data = await res.json();
+                if(data.success) {
+                    uploadedFiles.push(...data.files);
+                    renderImagePreview();
+                }
+            } catch(e) {
+                alert('上传失败: ' + e.message);
+            }
+        }
+
+        function renderImagePreview() {
+            const container = document.getElementById('image-preview');
+            container.innerHTML = uploadedFiles.map((f, i) => `
+                <div class="img-item">
+                    <img src="${f.url}" alt="${f.filename}">
+                    <button class="remove-btn" onclick="removeImage(${i})">✕</button>
+                </div>
+            `).join('');
+        }
+
+        function removeImage(idx) {
+            uploadedFiles.splice(idx, 1);
+            renderImagePreview();
+        }
+
+        // ===== 手动模式：Markdown 编辑 & 预览 =====
+        const mdEditor = document.getElementById('manual-content');
+        const mdPreview = document.getElementById('md-preview');
+        const titleInput = document.getElementById('manual-title');
+        let previewTimer = null;
+
+        titleInput.addEventListener('input', () => {
+            document.getElementById('title-count').textContent = titleInput.value.length;
+        });
+
+        mdEditor.addEventListener('input', () => {
+            clearTimeout(previewTimer);
+            previewTimer = setTimeout(updatePreview, 300);
+        });
+
+        async function updatePreview() {
+            const text = mdEditor.value;
+            if(!text.trim()) { mdPreview.textContent = '预览将显示在这里...'; return; }
+            try {
+                const form = new FormData();
+                form.append('content', text);
+                const res = await fetch('/api/preview-markdown', { method: 'POST', body: form });
+                const data = await res.json();
+                if(data.success) mdPreview.textContent = data.converted;
+            } catch(e) {
+                mdPreview.textContent = text;
+            }
+        }
+
+        // ===== 手动模式：标签管理 =====
+        let manualTags = [];
+        const tagInput = document.getElementById('tag-input');
+
+        tagInput.addEventListener('keydown', e => {
+            if(e.key === 'Enter' || e.key === ',') {
+                e.preventDefault();
+                const val = tagInput.value.trim().replace(/^#/, '');
+                if(val && !manualTags.includes(val) && manualTags.length < 10) {
+                    manualTags.push(val);
+                    renderTags();
+                }
+                tagInput.value = '';
+            }
+            if(e.key === 'Backspace' && !tagInput.value && manualTags.length) {
+                manualTags.pop();
+                renderTags();
+            }
+        });
+
+        function renderTags() {
+            const container = document.getElementById('tags-container');
+            const chips = manualTags.map((t, i) => `
+                <span class="tag-chip">#${t}<span class="tag-remove" onclick="removeTag(${i})">✕</span></span>
+            `).join('');
+            container.innerHTML = chips + '<input type="text" id="tag-input" placeholder="输入标签后按回车…" onkeydown="this.parentElement.querySelector(\'input\')&&undefined">';
+            // 重绑事件
+            const newInput = container.querySelector('input');
+            newInput.addEventListener('keydown', tagInput.__handler || (e => {
+                if(e.key === 'Enter' || e.key === ',') {
+                    e.preventDefault();
+                    const val = newInput.value.trim().replace(/^#/, '');
+                    if(val && !manualTags.includes(val) && manualTags.length < 10) {
+                        manualTags.push(val);
+                        renderTags();
+                    }
+                    newInput.value = '';
+                }
+                if(e.key === 'Backspace' && !newInput.value && manualTags.length) {
+                    manualTags.pop();
+                    renderTags();
+                }
+            }));
+        }
+
+        function removeTag(idx) {
+            manualTags.splice(idx, 1);
+            renderTags();
+        }
+
+        // ===== 手动模式：发布 =====
+        async function manualPublish() {
+            const title = document.getElementById('manual-title').value.trim();
+            const content = mdEditor.value.trim();
+            if(!title) return alert('请输入标题');
+            if(!content) return alert('请输入正文内容');
+
+            const btn = document.getElementById('manual-pub-btn');
+            const resultDiv = document.getElementById('manual-result');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="loading"></span> 发布中...';
+            resultDiv.innerHTML = '';
+
+            try {
+                const form = new FormData();
+                form.append('title', title);
+                form.append('content', content);
+                form.append('tags', manualTags.join(','));
+                form.append('image_paths', uploadedFiles.map(f => f.path).join(','));
+                form.append('convert_markdown', 'true');
+
+                const res = await fetch('/api/manual-publish', { method: 'POST', body: form });
+                const data = await res.json();
+
+                if(data.success) {
+                    resultDiv.innerHTML = `<div style="color:#51cf66;font-weight:bold;">✅ 发布成功！</div><pre>${data.text || ''}</pre>`;
+                } else {
+                    resultDiv.innerHTML = `<div style="color:#ff6b6b;font-weight:bold;">❌ 发布失败</div><pre>${data.text || ''}</pre>`;
+                }
+                loadStats(); loadHistory();
+            } catch(e) {
+                resultDiv.innerHTML = `<p style="color:red">错误：${e.message}</p>`;
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '🚀 发布到小红书';
+            }
+        }
+
+        function clearManual() {
+            document.getElementById('manual-title').value = '';
+            document.getElementById('title-count').textContent = '0';
+            mdEditor.value = '';
+            mdPreview.textContent = '预览将显示在这里...';
+            uploadedFiles = [];
+            renderImagePreview();
+            manualTags = [];
+            renderTags();
+            document.getElementById('manual-result').innerHTML = '';
+        }
+
+        // ===== 历史 & 统计 =====
         async function loadHistory() {
             const res = await fetch('/api/history');
             const history = await res.json();
             const div = document.getElementById('history');
-            
-            if(history.length === 0) {
-                div.innerHTML = '<p>暂无记录</p>';
-                return;
-            }
-            
+            if(history.length === 0) { div.innerHTML = '<p>暂无记录</p>'; return; }
             div.innerHTML = history.map(t => `
                 <div class="task-item ${t.status}">
                     <strong>${t.topic}</strong>
@@ -349,7 +736,6 @@
             `).join('');
         }
 
-        // 加载统计
         async function loadStats() {
             const res = await fetch('/api/stats');
             const stats = await res.json();
@@ -357,10 +743,6 @@
             document.getElementById('stat-success').textContent = stats.success || 0;
             document.getElementById('stat-failed').textContent = stats.failed || 0;
             document.getElementById('stat-pending').textContent = stats.pending || 0;
-        }
-
-        function clearInput() {
-            document.getElementById('topic-input').value = '';
         }
 
         // 初始化

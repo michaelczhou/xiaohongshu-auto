@@ -1,7 +1,7 @@
 """
 小红书自动发布系统 - FastAPI 主程序
 """
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -9,6 +9,8 @@ from pydantic import BaseModel
 from typing import List, Optional
 import asyncio
 import uvicorn
+import uuid
+import re
 from pathlib import Path
 from contextlib import asynccontextmanager
 
@@ -49,10 +51,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 静态文件
+# 静态文件 & 上传目录
 static_dir = Path(__file__).parent / "static"
 static_dir.mkdir(exist_ok=True)
+uploads_dir = Path(__file__).parent / "uploads"
+uploads_dir.mkdir(exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+app.mount("/uploads", StaticFiles(directory=str(uploads_dir)), name="uploads")
 
 
 class ConfigRequest(BaseModel):
@@ -182,6 +187,123 @@ async def logout():
     """退出登录（清除 cookies）"""
     result = await xhs_service.delete_cookies()
     return result
+
+
+# ----------------------------------------------------------
+# 手动发布 API
+# ----------------------------------------------------------
+
+def markdown_to_xhs(md_text: str) -> str:
+    """将 Markdown 转为小红书纯文本格式"""
+    text = md_text
+    # 标题 → 加粗 emoji 风格
+    text = re.sub(r'^### (.+)$', r'📌 \1', text, flags=re.MULTILINE)
+    text = re.sub(r'^## (.+)$', r'✨ \1', text, flags=re.MULTILINE)
+    text = re.sub(r'^# (.+)$', r'🔥 \1', text, flags=re.MULTILINE)
+    # 加粗 / 斜体
+    text = re.sub(r'\*\*(.+?)\*\*', r'「\1」', text)
+    text = re.sub(r'\*(.+?)\*', r'\1', text)
+    # 无序列表
+    text = re.sub(r'^[\-\*] (.+)$', r'• \1', text, flags=re.MULTILINE)
+    # 有序列表 → emoji 数字
+    num_emojis = ['1️⃣','2️⃣','3️⃣','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣','9️⃣','🔟']
+    def replace_ol(m):
+        idx = int(m.group(1)) - 1
+        emoji = num_emojis[idx] if 0 <= idx < len(num_emojis) else f'{m.group(1)}.'
+        return f'{emoji} {m.group(2)}'
+    text = re.sub(r'^(\d+)\. (.+)$', replace_ol, text, flags=re.MULTILINE)
+    # 行内代码
+    text = re.sub(r'`(.+?)`', r'「\1」', text)
+    # 代码块 → 保留内容
+    text = re.sub(r'```\w*\n([\s\S]*?)```', r'\1', text)
+    # 链接
+    text = re.sub(r'\[(.+?)\]\((.+?)\)', r'\1', text)
+    # 图片标记移除
+    text = re.sub(r'!\[.*?\]\(.*?\)', '', text)
+    # 分割线
+    text = re.sub(r'^---+$', '—————————', text, flags=re.MULTILINE)
+    # 引用
+    text = re.sub(r'^> (.+)$', r'💬 \1', text, flags=re.MULTILINE)
+    # 清理多余空行
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    return text.strip()
+
+
+@app.post("/api/upload")
+async def upload_images(files: List[UploadFile] = File(...)):
+    """上传图片，返回本地路径列表"""
+    saved = []
+    for f in files:
+        ext = Path(f.filename).suffix or '.jpg'
+        name = f"{uuid.uuid4().hex}{ext}"
+        dest = uploads_dir / name
+        content = await f.read()
+        dest.write_bytes(content)
+        saved.append({
+            "filename": f.filename,
+            "path": str(dest),
+            "url": f"/uploads/{name}",
+            "size": len(content),
+        })
+    return {"success": True, "files": saved}
+
+
+@app.post("/api/manual-publish")
+async def manual_publish(
+    title: str = Form(...),
+    content: str = Form(...),
+    tags: str = Form(""),
+    image_paths: str = Form(""),
+    convert_markdown: bool = Form(True),
+):
+    """手动发布：用户自定义标题、内容（支持 Markdown）、图片"""
+    # Markdown → 小红书格式
+    final_content = markdown_to_xhs(content) if convert_markdown else content
+
+    # 解析标签
+    tag_list = [t.strip().lstrip('#') for t in tags.split(',') if t.strip()] if tags else []
+    # 在正文末尾追加标签
+    if tag_list:
+        tag_text = ' '.join(f'#{t}' for t in tag_list)
+        final_content = f"{final_content}\n\n{tag_text}"
+
+    # 解析图片路径
+    img_list = [p.strip() for p in image_paths.split(',') if p.strip()] if image_paths else []
+
+    # 如果没有图片，下载随机图
+    if not img_list:
+        import tempfile, httpx
+        try:
+            async with httpx.AsyncClient(timeout=30, follow_redirects=True) as dl:
+                resp = await dl.get("https://picsum.photos/800/600")
+                tmp = tempfile.NamedTemporaryFile(suffix=".jpg", delete=False)
+                tmp.write(resp.content)
+                tmp.close()
+                img_list = [tmp.name]
+        except Exception:
+            pass
+
+    result = await xhs_service.publish_content(
+        title=title,
+        content=final_content,
+        images=img_list,
+        tags=tag_list,
+    )
+
+    # 保存历史
+    cache_manager.add_task({
+        "topic": f"[手动] {title}",
+        "content": {"title": title, "content": final_content[:200], "tags": tag_list},
+        "status": "success" if result.get("success") else "failed",
+    })
+
+    return result
+
+
+@app.post("/api/preview-markdown")
+async def preview_markdown(content: str = Form(...)):
+    """预览 Markdown 转换结果"""
+    return {"success": True, "converted": markdown_to_xhs(content)}
 
 
 class SearchRequest(BaseModel):
