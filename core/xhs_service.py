@@ -32,6 +32,11 @@ class XHSService:
             return {"success": True, "text": f"✅ 已登录\n用户名: {result.get('username', 'unknown')}\n\n你可以使用其他功能了。"}
         return {"success": True, "text": "❌ 未登录\n\n请先使用 get_login_qrcode 获取二维码登录。"}
 
+    async def check_creator_login(self) -> Dict:
+        """检查创作者中心（creator.xiaohongshu.com）是否已登录"""
+        result = await self._run_action(lambda a: a.check_creator_login())
+        return result
+
     async def get_login_qrcode(self) -> Dict:
         page = await self.browser_mgr.new_page()
         try:

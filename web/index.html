@@ -393,6 +393,63 @@
         @media (max-width: 768px) {
             .editor-container { grid-template-columns: 1fr; }
         }
+        /* 生成结果卡片 */
+        .gen-result-card {
+            background: #f9f9f9;
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 12px;
+            border-left: 4px solid #ddd;
+        }
+        .gen-result-card:has(.stat-success) { border-left-color: #2ecc71; }
+        .gen-result-card:has(.stat-pending) { border-left-color: #f39c12; }
+        .gen-result-card:has(.stat-failed) { border-left-color: #e74c3c; }
+        .gen-status {
+            font-weight: 600;
+            font-size: 14px;
+            margin-bottom: 8px;
+        }
+        .gen-status.stat-success { color: #2ecc71; }
+        .gen-status.stat-pending { color: #f39c12; }
+        .gen-status.stat-failed { color: #e74c3c; }
+        .login-hint {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            border-radius: 8px;
+            padding: 10px 14px;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            font-size: 14px;
+            color: #856404;
+        }
+        .hint-login-btn {
+            background: #ff6b6b;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 6px 16px;
+            cursor: pointer;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        .hint-login-btn:hover { background: #e74c3c; }
+        .gen-content-preview { margin-top: 8px; }
+        .gen-content-preview h4 {
+            color: #333;
+            font-size: 16px;
+            margin-bottom: 6px;
+        }
+        .gen-body {
+            color: #555;
+            font-size: 14px;
+            line-height: 1.6;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .gen-tags { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; }
     </style>
 </head>
 <body>
@@ -461,7 +518,7 @@
         </div>
 
         <!-- 登录状态 -->
-        <div class="panel">
+        <div class="panel" id="login-section">
             <h2>🔑 小红书账号</h2>
             <div id="login-status" style="margin-bottom:12px;padding:12px;background:#f8f9fa;border-radius:8px;">点击下方按钮检查登录状态</div>
             <div class="btn-group">
@@ -483,6 +540,8 @@
             </div>
             <div class="btn-group">
                 <button onclick="generate()" id="gen-btn">🚀 生成并发布</button>
+                <button onclick="generateOnly()" id="gen-only-btn" style="background:linear-gradient(135deg,#667eea,#764ba2);">✨ 仅生成</button>
+                <button onclick="publishPending()" id="pub-pending-btn" style="background:linear-gradient(135deg,#f093fb,#f5576c);">📤 发布待发布</button>
                 <button onclick="clearInput()" style="background: #888;">清空</button>
             </div>
             <div class="result-box" id="result"></div>
@@ -614,6 +673,49 @@
             }
         }
 
+        // ===== 生成结果渲染 =====
+        function renderGenerateResult(data) {
+            const content = data.content || data.data || {};
+            const title = content.title || '';
+            const body = content.content || '';
+            const tags = content.tags || [];
+            const status = data.status || (data.success ? 'success' : 'failed');
+
+            const statusMap = {
+                success: {icon: '✅', text: '发布成功', cls: 'stat-success'},
+                pending: {icon: '⏳', text: '已保存·待发布', cls: 'stat-pending'},
+                failed: {icon: '❌', text: '失败', cls: 'stat-failed'},
+            };
+            const s = statusMap[status] || statusMap.failed;
+
+            let html = `<div class="gen-result-card">`;
+            // 状态 + 登录提示
+            html += `<div class="gen-status ${s.cls}">${s.icon} ${s.text}</div>`;
+
+            if(status === 'pending' && data.error) {
+                html += `<div class="login-hint">
+                    <span>🔐 ${data.error}</span>
+                    <button onclick="document.getElementById('login-section').scrollIntoView({behavior:'smooth'});checkLogin();" class="hint-login-btn">去登录</button>
+                </div>`;
+            }
+
+            // 内容展示
+            if(title || body) {
+                html += `<div class="gen-content-preview">`;
+                if(title) html += `<h4>${title}</h4>`;
+                if(body) html += `<div class="gen-body">${body.replace(/\n/g, '<br>')}</div>`;
+                if(tags.length) html += `<div class="gen-tags">${tags.map(t => `<span class="tag-chip">#${t}</span>`).join(' ')}</div>`;
+                html += `</div>`;
+            }
+
+            if(data.error && status !== 'pending') {
+                html += `<p style="color:#e74c3c;margin-top:8px">${data.error}</p>`;
+            }
+
+            html += `</div>`;
+            return html;
+        }
+
         // ===== AI 自动模式 =====
         async function generate() {
             const input = document.getElementById('topic-input').value.trim();
@@ -641,9 +743,15 @@
                 }
                 const data = await res.json();
                 if(topics.length === 1) {
-                    resultDiv.innerHTML = `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+                    resultDiv.innerHTML = renderGenerateResult(data);
                 } else {
-                    resultDiv.innerHTML = `<p>批量完成 ${data.total} 个任务</p>`;
+                    let html = '';
+                    if(data.message) html += `<div class="login-hint">${data.message}</div>`;
+                    html += `<p>批量完成 ${data.total} 个任务</p>`;
+                    if(data.results) {
+                        data.results.forEach(r => { html += renderGenerateResult(r); });
+                    }
+                    resultDiv.innerHTML = html;
                 }
                 loadStats(); loadHistory();
             } catch(e) {
@@ -655,6 +763,104 @@
         }
 
         function clearInput() { document.getElementById('topic-input').value = ''; }
+
+        // ===== 仅生成（不发布） =====
+        async function generateOnly() {
+            const input = document.getElementById('topic-input').value.trim();
+            if(!input) return alert('请输入主题');
+            const topics = input.split('\n').filter(t => t.trim());
+            const btn = document.getElementById('gen-only-btn');
+            const resultDiv = document.getElementById('result');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="loading"></span> 生成中...';
+            resultDiv.innerHTML = '';
+            try {
+                let allHtml = '';
+                for(const topic of topics) {
+                    const res = await fetch('/api/generate-only', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({topic})
+                    });
+                    const data = await res.json();
+                    allHtml += renderGenerateResult(data);
+                }
+                resultDiv.innerHTML = allHtml;
+                loadStats(); loadHistory();
+            } catch(e) {
+                resultDiv.innerHTML = `<p style="color:red">错误：${e.message}</p>`;
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '✨ 仅生成';
+            }
+        }
+
+        // ===== 发布待发布内容 =====
+        async function publishPending() {
+            const resultDiv = document.getElementById('result');
+            const btn = document.getElementById('pub-pending-btn');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="loading"></span> 加载中...';
+            resultDiv.innerHTML = '';
+            try {
+                // 获取待发布任务
+                const histRes = await fetch('/api/history?status=pending&limit=50');
+                const tasks = await histRes.json();
+                if(!tasks.length) {
+                    resultDiv.innerHTML = '<p style="color:#f39c12">⚠️ 没有待发布的内容，请先使用「仅生成」生成内容</p>';
+                    return;
+                }
+                // 显示待发布列表，让用户选择
+                let html = `<h3 style="margin-bottom:12px;">📋 待发布内容（${tasks.length} 条）</h3>`;
+                html += `<button onclick="publishAllPending()" style="margin-bottom:12px;background:linear-gradient(135deg,#f093fb,#f5576c);color:white;border:none;border-radius:8px;padding:8px 20px;cursor:pointer;font-weight:600;">📤 全部发布</button>`;
+                tasks.forEach(t => {
+                    const c = t.content || {};
+                    html += `<div class="gen-result-card" id="pending-${t.id}">
+                        <div class="gen-status stat-pending">⏳ 待发布</div>
+                        <div class="gen-content-preview">
+                            <h4>${c.title || t.topic || '无标题'}</h4>
+                            <div class="gen-body">${(c.content || '').replace(/\n/g,'<br>').substring(0,200)}...</div>
+                        </div>
+                        <div style="margin-top:8px;">
+                            <button onclick="publishOne('${t.id}')" class="hint-login-btn" style="background:#f5576c;">📤 发布</button>
+                        </div>
+                    </div>`;
+                });
+                resultDiv.innerHTML = html;
+            } catch(e) {
+                resultDiv.innerHTML = `<p style="color:red">错误：${e.message}</p>`;
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '📤 发布待发布';
+            }
+        }
+
+        async function publishOne(taskId) {
+            const card = document.getElementById(`pending-${taskId}`);
+            if(card) card.querySelector('.gen-status').innerHTML = '<span class="loading"></span> 发布中...';
+            try {
+                const res = await fetch('/api/publish-saved', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({task_id: taskId})
+                });
+                const data = await res.json();
+                if(card) card.outerHTML = renderGenerateResult(data);
+                loadStats(); loadHistory();
+            } catch(e) {
+                if(card) card.querySelector('.gen-status').innerHTML = `<span style="color:red">发布失败: ${e.message}</span>`;
+            }
+        }
+
+        async function publishAllPending() {
+            const resultDiv = document.getElementById('result');
+            const cards = resultDiv.querySelectorAll('.gen-result-card[id^="pending-"]');
+            for(const card of cards) {
+                const taskId = card.id.replace('pending-', '');
+                await publishOne(taskId);
+                await new Promise(r => setTimeout(r, 2000)); // 间隔 2 秒
+            }
+        }
 
         // ===== 手动模式：图片上传 =====
         let uploadedFiles = [];  // {filename, path, url}

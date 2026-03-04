@@ -77,6 +77,10 @@ class BatchGenerateRequest(BaseModel):
     topics: List[str]
 
 
+class PublishSavedRequest(BaseModel):
+    task_id: str
+
+
 @app.get("/", response_class=HTMLResponse)
 async def root():
     """主页面"""
@@ -115,53 +119,174 @@ async def save_config(req: ConfigRequest):
 
 
 async def _check_login() -> dict:
-    """检查登录状态，未登录则返回错误 dict，已登录返回 None"""
+    """检查登录状态（包括创作者中心），未登录则返回错误 dict，已登录返回 None"""
     login = await xhs_service.check_login_status()
     if "未登录" in login.get("text", ""):
         return {"success": False, "error": "未登录小红书，请先在页面上方扫码登录"}
+    # 检查创作者中心登录
+    creator_login = await xhs_service.check_creator_login()
+    if not creator_login.get("logged_in"):
+        return {"success": False, "error": "创作者中心未登录，请先在页面上方扫码登录小红书"}
     return None
+
+
+@app.post("/api/generate-only")
+async def generate_only(req: GenerateRequest):
+    """仅生成内容并保存，不发布"""
+    generator._init_clients()
+    search_results = await generator.search_info(req.topic)
+    gen_result = await generator.generate_content(req.topic, search_results)
+
+    if not gen_result["success"]:
+        cache_manager.add_task({
+            "topic": req.topic,
+            "content": {},
+            "status": "failed",
+            "error": gen_result.get("error", "生成失败"),
+        })
+        return gen_result
+
+    content_data = gen_result["data"]
+    task_id = cache_manager.add_task({
+        "topic": req.topic,
+        "content": content_data,
+        "status": "pending",
+    })
+    return {
+        "success": True,
+        "content": content_data,
+        "status": "pending",
+        "task_id": task_id,
+        "message": "内容已生成并保存，可在历史记录中发布",
+    }
+
+
+@app.post("/api/publish-saved")
+async def publish_saved(req: PublishSavedRequest):
+    """发布已保存的待发布内容"""
+    if err := await _check_login():
+        return err
+
+    # 查找任务
+    history = cache_manager.get_history(limit=200)
+    task = None
+    for t in history:
+        if t.get("id") == req.task_id:
+            task = t
+            break
+    if not task:
+        return {"success": False, "error": "未找到该任务"}
+    if task.get("status") not in ("pending", "failed"):
+        return {"success": False, "error": f"该任务状态为 {task.get('status')}，无需重新发布"}
+
+    content_data = task.get("content", {})
+    if not content_data or not content_data.get("title"):
+        return {"success": False, "error": "任务内容为空，无法发布"}
+
+    publish_result = await generator.publish_to_xhs(content_data)
+    new_status = "success" if publish_result.get("success") else "failed"
+    cache_manager.update_task(req.task_id, {"status": new_status})
+
+    return {
+        "success": publish_result.get("success", False),
+        "content": content_data,
+        "publish_result": publish_result.get("text", ""),
+        "status": new_status,
+    }
 
 
 @app.post("/api/generate")
 async def generate(req: GenerateRequest):
-    """生成单个内容"""
-    if err := await _check_login():
-        return err
-    result = await generator.generate_and_publish(req.topic)
-    
-    # 保存到历史
-    if result["success"]:
+    """生成并发布：先生成内容（自动保存），再检查登录发布"""
+    # 1. 生成内容（不需要登录）
+    generator._init_clients()
+    search_results = await generator.search_info(req.topic)
+    gen_result = await generator.generate_content(req.topic, search_results)
+
+    if not gen_result["success"]:
         cache_manager.add_task({
             "topic": req.topic,
-            "content": result.get("content", {}),
-            "status": "success"
+            "content": {},
+            "status": "failed",
+            "error": gen_result.get("error", "生成失败"),
         })
-    
-    return result
+        return gen_result
+
+    content_data = gen_result["data"]
+
+    # 2. 检查登录状态
+    if err := await _check_login():
+        # 未登录：保存生成结果，提示登录后手动发布
+        cache_manager.add_task({
+            "topic": req.topic,
+            "content": content_data,
+            "status": "pending",
+        })
+        return {
+            "success": False,
+            "error": "未登录小红书，内容已保存。请先扫码登录，然后在历史记录中重新发布。",
+            "content": content_data,
+            "status": "pending",
+        }
+
+    # 3. 发布
+    publish_result = await generator.publish_to_xhs(content_data)
+    status = "success" if publish_result.get("success") else "failed"
+    cache_manager.add_task({
+        "topic": req.topic,
+        "content": content_data,
+        "status": status,
+    })
+    return {
+        "success": publish_result.get("success", False),
+        "topic": req.topic,
+        "content": content_data,
+        "publish_result": publish_result.get("text", ""),
+        "status": status,
+    }
 
 
 @app.post("/api/batch-generate")
 async def batch_generate(req: BatchGenerateRequest):
-    """批量生成"""
-    if err := await _check_login():
-        return err
+    """批量生成并发布"""
+    # 先检查登录
+    logged_in = True
+    if await _check_login():
+        logged_in = False
+
+    generator._init_clients()
     results = []
     for topic in req.topics:
-        result = await generator.generate_and_publish(topic)
-        results.append(result)
-        
-        # 保存到历史
-        if result["success"]:
-            cache_manager.add_task({
-                "topic": topic,
-                "content": result.get("content", {}),
-                "status": "success"
-            })
-        
-        # 避免请求过快
+        # 1. 生成
+        search_results = await generator.search_info(topic)
+        gen_result = await generator.generate_content(topic, search_results)
+        if not gen_result["success"]:
+            cache_manager.add_task({"topic": topic, "content": {}, "status": "failed", "error": gen_result.get("error","")})
+            results.append(gen_result)
+            await asyncio.sleep(1)
+            continue
+
+        content_data = gen_result["data"]
+
+        # 2. 发布（仅已登录时）
+        if logged_in:
+            publish_result = await generator.publish_to_xhs(content_data)
+            status = "success" if publish_result.get("success") else "failed"
+        else:
+            publish_result = {"success": False, "text": "未登录，内容已保存"}
+            status = "pending"
+
+        cache_manager.add_task({"topic": topic, "content": content_data, "status": status})
+        results.append({
+            "success": publish_result.get("success", False),
+            "topic": topic,
+            "content": content_data,
+            "status": status,
+        })
         await asyncio.sleep(1)
-    
-    return {"results": results, "total": len(results)}
+
+    msg = "" if logged_in else "\n⚠️ 未登录小红书，所有内容已保存但未发布。请登录后重新发布。"
+    return {"results": results, "total": len(results), "message": msg}
 
 
 @app.get("/api/history")

@@ -88,6 +88,7 @@ class PublishResult:
 # ============================================================
 XHS_EXPLORE = "https://www.xiaohongshu.com/explore"
 XHS_PUBLISH = "https://creator.xiaohongshu.com/publish/publish?source=official"
+XHS_CREATOR_HOME = "https://creator.xiaohongshu.com"
 XHS_SEARCH = "https://www.xiaohongshu.com/search_result"
 XHS_LOGIN = "https://www.xiaohongshu.com"
 
@@ -131,6 +132,41 @@ class XHSActions:
             return {"logged_in": False, "message": "未登录"}
         except Exception as e:
             return {"logged_in": False, "message": f"检查失败: {e}"}
+
+    async def check_creator_login(self) -> Dict:
+        """检查创作者中心（creator.xiaohongshu.com）是否已登录"""
+        try:
+            await self.page.goto(XHS_CREATOR_HOME, wait_until="domcontentloaded", timeout=30000)
+            await self.page.wait_for_timeout(3000)
+
+            # 如果被重定向到登录页面，说明未登录
+            current_url = self.page.url
+            if "login" in current_url.lower():
+                return {"logged_in": False, "message": "创作者中心未登录"}
+
+            # 检测是否有登录相关的弹窗或按钮
+            login_btn = await self.page.query_selector("a[href*='login'], .login-btn, button:has-text('登录')")
+            if login_btn:
+                visible = await login_btn.is_visible()
+                if visible:
+                    return {"logged_in": False, "message": "创作者中心未登录"}
+
+            # 检测创作者中心用户信息（已登录标志）
+            user_el = await self.page.query_selector(".user-info, .creator-header .user, .dps-avatar")
+            if user_el:
+                return {"logged_in": True, "message": "创作者中心已登录"}
+
+            # 通过 cookie 判断
+            cookies = await self.page.context.cookies()
+            creator_cookies = [c for c in cookies if "creator" in c.get("domain", "") or c.get("domain", "").endswith(".xiaohongshu.com")]
+            has_session = any(c["name"] in ("web_session", "a1", "galaxy_creator_session_id") for c in creator_cookies)
+            if has_session:
+                return {"logged_in": True, "message": "创作者中心已登录"}
+
+            return {"logged_in": False, "message": "创作者中心未登录"}
+        except Exception as e:
+            # 如果检查失败不阻塞流程，假设已登录
+            return {"logged_in": True, "message": f"创作者中心检查异常(放行): {e}"}
 
     async def get_login_qrcode(self) -> Dict:
         """获取登录二维码"""
