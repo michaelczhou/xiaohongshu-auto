@@ -11,8 +11,8 @@ from pydantic import BaseModel, Field
 class AppConfig(BaseModel):
     """应用配置"""
     llm_api_key: str = Field(default="", description="LLM API 密钥")
-    llm_base_url: str = Field(default="https://api.openai.com/v1", description="LLM API 基础 URL")
-    llm_model: str = Field(default="gpt-4o", description="使用的模型")
+    llm_base_url: str = Field(default="https://coding.dashscope.aliyuncs.com/v1", description="LLM API 基础 URL")
+    llm_model: str = Field(default="qwen3.5-plus", description="使用的模型")
     jina_api_key: str = Field(default="", description="Jina 搜索 API 密钥")
     tavily_api_key: str = Field(default="", description="Tavily 搜索 API 密钥")
     xhs_mcp_url: str = Field(default="http://localhost:18060/mcp", description="小红书 MCP 服务地址")
