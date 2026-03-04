@@ -1,6 +1,11 @@
-# 小红书自动发布系统
+# 小红书自动发布系统 📕
+
+[![GitHub](https://img.shields.io/github/stars/michaelczhou/xiaohongshu-auto?style=flat)](https://github.com/michaelczhou/xiaohongshu-auto)
+[![License](https://img.shields.io/github/license/michaelczhou/xiaohongshu-auto)](https://github.com/michaelczhou/xiaohongshu-auto/blob/main/LICENSE)
 
 基于 MCP (Model Context Protocol) 的智能内容生成和自动发布系统。
+
+**在线 Demo**: 输入主题 → AI 自动搜索 → 生成内容 → 发布到小红书
 
 ## 📁 项目结构
 
@@ -17,23 +22,32 @@ xiaohongshu-auto/
 
 ### 前置条件
 
-1. **Python 3.8+**
-2. **Node.js 16+**
-3. **小红书账号**（用于 MCP 服务登录）
+| 项目 | 版本 | 说明 |
+|------|------|------|
+| Python | 3.8+ | 运行主程序 |
+| Node.js | 16+ | MCP 工具 |
+| 小红书账号 | - | 用于发布 |
 
 ### 安装步骤
 
 ```bash
-# 1. 安装依赖
+# 1. 克隆项目
+git clone https://github.com/michaelczhou/xiaohongshu-auto.git
+cd xiaohongshu-auto
+
+# 2. 安装依赖
 pip install -r requirements.txt
 
-# 2. 启动小红书 MCP 服务（需要单独配置）
+# 3. 启动小红书 MCP 服务（必须）
 git clone https://github.com/xpzouying/xiaohongshu-mcp.git
 cd xiaohongshu-mcp
-# 按该项目说明配置并启动
+# 按该项目 README 配置小红书账号并启动服务
 
-# 3. 启动本系统
+# 4. 启动本系统
+cd ../xiaohongshu-auto
 python app.py
+
+# 访问 http://localhost:8080
 ```
 
 ## 📋 需要的配置
