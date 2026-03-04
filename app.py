@@ -114,9 +114,19 @@ async def save_config(req: ConfigRequest):
     return {"success": True, "message": "配置已保存"}
 
 
+async def _check_login() -> dict:
+    """检查登录状态，未登录则返回错误 dict，已登录返回 None"""
+    login = await xhs_service.check_login_status()
+    if "未登录" in login.get("text", ""):
+        return {"success": False, "error": "未登录小红书，请先在页面上方扫码登录"}
+    return None
+
+
 @app.post("/api/generate")
 async def generate(req: GenerateRequest):
     """生成单个内容"""
+    if err := await _check_login():
+        return err
     result = await generator.generate_and_publish(req.topic)
     
     # 保存到历史
@@ -133,6 +143,8 @@ async def generate(req: GenerateRequest):
 @app.post("/api/batch-generate")
 async def batch_generate(req: BatchGenerateRequest):
     """批量生成"""
+    if err := await _check_login():
+        return err
     results = []
     for topic in req.topics:
         result = await generator.generate_and_publish(topic)
@@ -257,6 +269,8 @@ async def manual_publish(
     convert_markdown: bool = Form(True),
 ):
     """手动发布：用户自定义标题、内容（支持 Markdown）、图片"""
+    if err := await _check_login():
+        return err
     # Markdown → 小红书格式
     final_content = markdown_to_xhs(content) if convert_markdown else content
 
