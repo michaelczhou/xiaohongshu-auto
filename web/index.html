@@ -476,9 +476,9 @@
                 <div class="stat-value" id="stat-failed">0</div>
                 <div class="stat-label">失败</div>
             </div>
-            <div class="stat-card clickable" onclick="showTaskList('pending', '⏳ 进行中')">
+            <div class="stat-card clickable" onclick="showTaskList('pending', '⏳ 待发布')">
                 <div class="stat-value" id="stat-pending">0</div>
-                <div class="stat-label">进行中</div>
+                <div class="stat-label">待发布</div>
             </div>
         </div>
 
@@ -709,7 +709,10 @@
             }
 
             if(data.error && status !== 'pending') {
-                html += `<p style="color:#e74c3c;margin-top:8px">${data.error}</p>`;
+                html += `<p style="color:#e74c3c;margin-top:8px">❌ ${data.error}</p>`;
+            }
+            if(data.publish_result && status === 'failed') {
+                html += `<p style="color:#e74c3c;margin-top:4px;font-size:13px;">📋 ${data.publish_result}</p>`;
             }
 
             html += `</div>`;
@@ -1046,8 +1049,12 @@
             const title = t.content?.title || t.topic || '无标题';
             const content = t.content?.content || '';
             const tags = t.content?.tags || [];
-            const statusIcon = t.status === 'success' ? '✅' : t.status === 'failed' ? '❌' : '⏳';
+            const statusMap = {success: '✅', failed: '❌', pending: '⏳'};
+            const statusIcon = statusMap[t.status] || '❓';
             const tagsHtml = tags.length ? `<div class="task-tags">${tags.map(tg => `<span>#${tg}</span>`).join('')}</div>` : '';
+            const errorHtml = (t.status === 'failed' && t.error) ? `<p style="color:#e74c3c;margin-top:6px;font-size:13px;">❌ 失败原因：${escHtml(t.error)}</p>` : '';
+            const publishResultHtml = (t.status === 'failed' && t.publish_error) ? `<p style="color:#e74c3c;margin-top:4px;font-size:13px;">📋 详情：${escHtml(t.publish_error)}</p>` : '';
+            const retryBtn = (t.status === 'failed' || t.status === 'pending') && content ? `<button onclick="event.stopPropagation();publishOne('${t.id}')" style="margin-top:8px;background:#f5576c;color:white;border:none;border-radius:6px;padding:4px 14px;cursor:pointer;font-size:13px;">📤 重新发布</button>` : '';
             return `
                 <div class="task-item ${t.status}" onclick="this.classList.toggle('expanded')">
                     <div style="display:flex;justify-content:space-between;align-items:center;">
@@ -1055,9 +1062,12 @@
                         <span class="task-expand-hint">点击展开 ▾</span>
                     </div>
                     <p style="color:#999;font-size:13px;margin-top:4px;">${t.topic ? '主题: ' + escHtml(t.topic) + ' · ' : ''}${new Date(t.created_at).toLocaleString()}</p>
+                    ${errorHtml}
+                    ${publishResultHtml}
                     <div class="task-detail">
                         ${content ? '<p>' + escHtml(content).replace(/\n/g,'<br>') + '</p>' : '<p style="color:#bbb">无正文内容</p>'}
                         ${tagsHtml}
+                        ${retryBtn}
                     </div>
                 </div>
             `;

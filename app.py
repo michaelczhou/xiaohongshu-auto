@@ -185,12 +185,17 @@ async def publish_saved(req: PublishSavedRequest):
 
     publish_result = await generator.publish_to_xhs(content_data)
     new_status = "success" if publish_result.get("success") else "failed"
-    cache_manager.update_task(req.task_id, {"status": new_status})
+    update_data = {"status": new_status}
+    if new_status == "failed":
+        update_data["error"] = publish_result.get("text", "") or publish_result.get("error", "发布失败")
+        update_data["publish_error"] = publish_result.get("text", publish_result.get("error", ""))
+    cache_manager.update_task(req.task_id, update_data)
 
     return {
         "success": publish_result.get("success", False),
         "content": content_data,
         "publish_result": publish_result.get("text", ""),
+        "error": publish_result.get("text", "") if new_status == "failed" else "",
         "status": new_status,
     }
 
@@ -232,16 +237,21 @@ async def generate(req: GenerateRequest):
     # 3. 发布
     publish_result = await generator.publish_to_xhs(content_data)
     status = "success" if publish_result.get("success") else "failed"
-    cache_manager.add_task({
+    task_data = {
         "topic": req.topic,
         "content": content_data,
         "status": status,
-    })
+    }
+    if status == "failed":
+        task_data["error"] = publish_result.get("text", "") or publish_result.get("error", "发布失败")
+        task_data["publish_error"] = publish_result.get("text", publish_result.get("error", ""))
+    cache_manager.add_task(task_data)
     return {
         "success": publish_result.get("success", False),
         "topic": req.topic,
         "content": content_data,
         "publish_result": publish_result.get("text", ""),
+        "error": publish_result.get("text", "") if status == "failed" else "",
         "status": status,
     }
 
@@ -276,11 +286,16 @@ async def batch_generate(req: BatchGenerateRequest):
             publish_result = {"success": False, "text": "未登录，内容已保存"}
             status = "pending"
 
-        cache_manager.add_task({"topic": topic, "content": content_data, "status": status})
+        task_data = {"topic": topic, "content": content_data, "status": status}
+        if status == "failed":
+            task_data["error"] = publish_result.get("text", "") or publish_result.get("error", "发布失败")
+            task_data["publish_error"] = publish_result.get("text", publish_result.get("error", ""))
+        cache_manager.add_task(task_data)
         results.append({
             "success": publish_result.get("success", False),
             "topic": topic,
             "content": content_data,
+            "error": publish_result.get("text", "") if status == "failed" else "",
             "status": status,
         })
         await asyncio.sleep(1)
@@ -430,11 +445,15 @@ async def manual_publish(
     )
 
     # 保存历史
-    cache_manager.add_task({
+    task_data = {
         "topic": f"[手动] {title}",
         "content": {"title": title, "content": final_content[:200], "tags": tag_list},
         "status": "success" if result.get("success") else "failed",
-    })
+    }
+    if not result.get("success"):
+        task_data["error"] = result.get("text", "") or result.get("error", "发布失败")
+        task_data["publish_error"] = result.get("text", result.get("error", ""))
+    cache_manager.add_task(task_data)
 
     return result
 
