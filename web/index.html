@@ -176,13 +176,26 @@
             </div>
             <div class="form-group">
                 <label>模型</label>
-                <input type="text" id="llm-model" value="gpt-4o">
+                <input type="text" id="llm-model" value="qwen3.5-plus">
             </div>
             <div class="form-group">
-                <label>小红书 MCP 地址</label>
-                <input type="text" id="xhs-mcp-url" value="http://localhost:18060/mcp">
+                <label>
+                    <input type="checkbox" id="headless-mode" style="width:auto;margin-right:6px;">
+                    无头模式（不显示浏览器窗口）
+                </label>
             </div>
             <button onclick="saveConfig()">💾 保存配置</button>
+        </div>
+
+        <!-- 登录状态 -->
+        <div class="panel">
+            <h2>🔑 小红书账号</h2>
+            <div id="login-status" style="margin-bottom:12px;padding:12px;background:#f8f9fa;border-radius:8px;">点击下方按钮检查登录状态</div>
+            <div class="btn-group">
+                <button onclick="checkLogin()">🔍 检查登录状态</button>
+                <button onclick="doLogin()">📱 扫码登录</button>
+                <button onclick="doLogout()" style="background:#888;">🚪 退出登录</button>
+            </div>
         </div>
 
         <!-- 生成内容 -->
@@ -214,7 +227,7 @@
             const config = await res.json();
             if(config.llm_base_url) document.getElementById('llm-base-url').value = config.llm_base_url;
             if(config.llm_model) document.getElementById('llm-model').value = config.llm_model;
-            if(config.xhs_mcp_url) document.getElementById('xhs-mcp-url').value = config.xhs_mcp_url;
+            document.getElementById('headless-mode').checked = !!config.headless;
         }
 
         // 保存配置
@@ -223,7 +236,7 @@
                 llm_api_key: document.getElementById('llm-api-key').value,
                 llm_base_url: document.getElementById('llm-base-url').value,
                 llm_model: document.getElementById('llm-model').value,
-                xhs_mcp_url: document.getElementById('xhs-mcp-url').value,
+                headless: document.getElementById('headless-mode').checked,
             };
             const res = await fetch('/api/config', {
                 method: 'POST',
@@ -231,6 +244,43 @@
                 body: JSON.stringify(config)
             });
             alert('配置已保存！');
+        }
+
+        // 登录相关
+        async function checkLogin() {
+            const div = document.getElementById('login-status');
+            div.innerHTML = '⏳ 检查中...';
+            try {
+                const res = await fetch('/api/xhs/login-status');
+                const data = await res.json();
+                div.innerHTML = data.text ? data.text.replace(/\n/g, '<br>') : '未知状态';
+            } catch(e) {
+                div.innerHTML = `<span style="color:red">检查失败: ${e.message}</span>`;
+            }
+        }
+
+        async function doLogin() {
+            const div = document.getElementById('login-status');
+            div.innerHTML = '⏳ 正在生成登录二维码，请在弹出的浏览器窗口中扫码...<br>（超时时间 120 秒）';
+            try {
+                const res = await fetch('/api/xhs/login', {method: 'POST'});
+                const data = await res.json();
+                div.innerHTML = data.text ? data.text.replace(/\n/g, '<br>') : '登录操作完成';
+            } catch(e) {
+                div.innerHTML = `<span style="color:red">登录失败: ${e.message}</span>`;
+            }
+        }
+
+        async function doLogout() {
+            if(!confirm('确定要退出登录？')) return;
+            const div = document.getElementById('login-status');
+            try {
+                const res = await fetch('/api/xhs/logout', {method: 'POST'});
+                const data = await res.json();
+                div.innerHTML = data.text ? data.text.replace(/\n/g, '<br>') : '已退出';
+            } catch(e) {
+                div.innerHTML = `<span style="color:red">操作失败: ${e.message}</span>`;
+            }
         }
 
         // 生成内容
@@ -247,12 +297,20 @@
             resultDiv.innerHTML = '';
 
             try {
-                const url = topics.length > 1 ? '/api/batch-generate' : '/api/generate';
-                const res = await fetch(url, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({topics})
-                });
+                let res;
+                if(topics.length > 1) {
+                    res = await fetch('/api/batch-generate', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({topics})
+                    });
+                } else {
+                    res = await fetch('/api/generate', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({topic: topics[0]})
+                    });
+                }
                 const data = await res.json();
                 
                 if(topics.length === 1) {

@@ -21,6 +21,9 @@ config/.env
 cache/*.json
 *.log
 
+# Cookies
+cookies/
+
 # IDE
 .vscode/
 .idea/

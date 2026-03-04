@@ -13,9 +13,9 @@ class AppConfig(BaseModel):
     llm_api_key: str = Field(default="", description="LLM API 密钥")
     llm_base_url: str = Field(default="https://coding.dashscope.aliyuncs.com/v1", description="LLM API 基础 URL")
     llm_model: str = Field(default="qwen3.5-plus", description="使用的模型")
-    jina_api_key: str = Field(default="", description="Jina 搜索 API 密钥")
-    tavily_api_key: str = Field(default="", description="Tavily 搜索 API 密钥")
-    xhs_mcp_url: str = Field(default="http://localhost:18060/mcp", description="小红书 MCP 服务地址")
+    jina_api_key: str = Field(default="", description="Jina 搜索 API 密钥（保留字段）")
+    tavily_api_key: str = Field(default="", description="Tavily 搜索 API 密钥（保留字段）")
+    headless: bool = Field(default=False, description="浏览器是否无头模式运行")
 
 
 class ConfigManager:
@@ -50,27 +50,21 @@ class ConfigManager:
         self._config = config
     
     def get_mcp_servers_config(self) -> dict:
-        """生成 MCP 服务器配置"""
+        """生成 MCP 服务器配置（保留接口，未来扩展用）"""
         config = self.load()
-        return {
-            "mcpServers": {
-                "jina": {
-                    "command": "npx",
-                    "args": ["-y", "jina-mcp-tools"],
-                    "env": {
-                        "JINA_API_KEY": config.jina_api_key
-                    }
-                },
-                "tavily": {
-                    "command": "npx",
-                    "args": ["-y", "mcp-remote", f"https://mcp.tavily.com/mcp/?tavilyApiKey={config.tavily_api_key}"]
-                },
-                "xhs": {
-                    "type": "streamable_http",
-                    "url": config.xhs_mcp_url
-                }
+        servers = {}
+        if config.jina_api_key:
+            servers["jina"] = {
+                "command": "npx",
+                "args": ["-y", "jina-mcp-tools"],
+                "env": {"JINA_API_KEY": config.jina_api_key}
             }
-        }
+        if config.tavily_api_key:
+            servers["tavily"] = {
+                "command": "npx",
+                "args": ["-y", "mcp-remote", f"https://mcp.tavily.com/mcp/?tavilyApiKey={config.tavily_api_key}"]
+            }
+        return {"mcpServers": servers}
 
 
 # 全局配置管理器实例

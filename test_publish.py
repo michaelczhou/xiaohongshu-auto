@@ -1,11 +1,11 @@
 """
-端到端测试：直接通过 MCP 协议发布一篇 OpenClaw 介绍文章到小红书
+端到端测试：直接通过 Playwright 浏览器自动化发布一篇 OpenClaw 介绍文章到小红书
 """
 import asyncio
 import sys
 sys.path.insert(0, "/Users/michaelzhou/project/vibecoding/xiaohongshu-auto")
 
-from core.xhs_mcp_client import XHSMCPClient
+from core.xhs_service import XHSService
 
 
 # OpenClaw 介绍文章内容
@@ -46,18 +46,22 @@ TAGS = ["OpenClaw", "AI自动化", "效率工具", "开源项目", "AIAgent"]
 
 
 async def main():
-    client = XHSMCPClient("http://localhost:18060/mcp")
+    service = XHSService(headless=False)
     
     try:
         # 1. 检查登录
         print("=" * 50)
         print("步骤 1: 检查登录状态...")
-        login_result = await client.check_login()
-        print(f"  结果: {login_result['text'] if login_result['success'] else login_result['error']}")
+        login_result = await service.check_login_status()
+        print(f"  结果: {login_result['text']}")
         
-        if not login_result["success"] or "未登录" in login_result.get("text", ""):
-            print("❌ 未登录，请先登录小红书")
-            return
+        if "未登录" in login_result.get("text", ""):
+            print("\n❌ 未登录，请先使用 doLogin 登录小红书")
+            print("  尝试获取二维码...")
+            qr_result = await service.get_login_qrcode()
+            print(f"  {qr_result['text']}")
+            if not qr_result.get("success"):
+                return
         
         # 2. 下载配图
         print("\n步骤 2: 准备配图...")
@@ -82,11 +86,11 @@ async def main():
         print(f"  正文长度: {len(CONTENT)} 字")
         
         images = [image_path] if image_path else []
-        result = await client.publish_note(
+        result = await service.publish_content(
             title=TITLE,
             content=CONTENT,
+            images=images,
             tags=TAGS,
-            image_paths=images
         )
         
         print(f"\n{'=' * 50}")
@@ -95,10 +99,10 @@ async def main():
             print(f"  详情: {result['text']}")
         else:
             print(f"❌ 发布失败")
-            print(f"  错误: {result.get('error', '未知错误')}")
+            print(f"  错误: {result.get('text', '未知错误')}")
         
     finally:
-        await client.close()
+        await service.close()
 
 
 if __name__ == "__main__":

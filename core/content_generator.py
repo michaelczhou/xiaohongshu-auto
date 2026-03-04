@@ -1,22 +1,26 @@
 """
-小红书内容生成器 - 基于 LLM 和 MCP 工具生成内容
+小红书内容生成器 - 基于 LLM 生成内容，通过 XHSService 直接发布
 """
 import json
 import asyncio
 from typing import List, Dict, Optional
 from openai import AsyncOpenAI
 from config.config_manager import config_manager
-from core.xhs_mcp_client import XHSMCPClient
+from core.xhs_service import XHSService
 
 
 class ContentGenerator:
     """内容生成器"""
     
-    def __init__(self):
+    def __init__(self, xhs_service: XHSService = None):
         self.config = config_manager.load()
         self.client = None
-        self.mcp_client = None
+        self.xhs_service = xhs_service
         self._init_clients()
+    
+    def set_xhs_service(self, xhs_service: XHSService):
+        """设置小红书服务实例（用于延迟注入）"""
+        self.xhs_service = xhs_service
     
     def _init_clients(self):
         """初始化客户端（配置变更时重新初始化）"""
@@ -26,12 +30,13 @@ class ContentGenerator:
                 api_key=self.config.llm_api_key,
                 base_url=self.config.llm_base_url
             )
-        self.mcp_client = XHSMCPClient(mcp_url=self.config.xhs_mcp_url)
     
     async def search_info(self, topic: str, days: int = 7) -> Dict:
         """搜索相关信息"""
+        if not self.xhs_service:
+            return {"topic": topic, "search_result": "", "success": False, "error": "XHSService 未初始化"}
         try:
-            result = await self.mcp_client.search_feeds(topic)
+            result = await self.xhs_service.search_feeds(topic)
             return {
                 "topic": topic,
                 "search_result": result.get("text", ""),
@@ -99,7 +104,10 @@ class ContentGenerator:
             }
     
     async def publish_to_xhs(self, content_data: Dict, image_paths: list = None) -> Dict:
-        """通过 MCP 发布到小红书"""
+        """直接通过 XHSService 发布到小红书"""
+        if not self.xhs_service:
+            return {"success": False, "error": "XHSService 未初始化"}
+
         title = content_data.get("title", "")
         content = content_data.get("content", "")
         tags = content_data.get("tags", [])
@@ -118,11 +126,11 @@ class ContentGenerator:
             except Exception:
                 image_paths = []
         
-        result = await self.mcp_client.publish_note(
+        result = await self.xhs_service.publish_content(
             title=title,
             content=content,
+            images=image_paths,
             tags=tags,
-            image_paths=image_paths
         )
         return result
     

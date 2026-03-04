@@ -10,12 +10,35 @@ from typing import List, Optional
 import asyncio
 import uvicorn
 from pathlib import Path
+from contextlib import asynccontextmanager
 
 from config.config_manager import config_manager, AppConfig
 from core.content_generator import ContentGenerator
+from core.xhs_service import XHSService
 from cache.cache_manager import cache_manager
 
-app = FastAPI(title="小红书自动发布系统", version="1.0.0")
+
+# 全局服务
+xhs_service: XHSService = None
+generator: ContentGenerator = None
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """应用生命周期管理"""
+    global xhs_service, generator
+    config = config_manager.load()
+    xhs_service = XHSService(headless=config.headless)
+    generator = ContentGenerator(xhs_service=xhs_service)
+    print(f"✅ 小红书服务已启动 (headless={config.headless})")
+    yield
+    # 关闭时清理浏览器
+    if xhs_service:
+        await xhs_service.close()
+        print("🛑 浏览器已关闭")
+
+
+app = FastAPI(title="小红书自动发布系统", version="2.0.0", lifespan=lifespan)
 
 # CORS
 app.add_middleware(
@@ -31,17 +54,14 @@ static_dir = Path(__file__).parent / "static"
 static_dir.mkdir(exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
-# 全局生成器
-generator = ContentGenerator()
-
 
 class ConfigRequest(BaseModel):
     llm_api_key: str
-    llm_base_url: str = "https://api.openai.com/v1"
-    llm_model: str = "gpt-4o"
+    llm_base_url: str = "https://coding.dashscope.aliyuncs.com/v1"
+    llm_model: str = "qwen3.5-plus"
     jina_api_key: str = ""
     tavily_api_key: str = ""
-    xhs_mcp_url: str = "http://localhost:18060/mcp"
+    headless: bool = False
 
 
 class GenerateRequest(BaseModel):
@@ -68,7 +88,7 @@ async def get_config():
     return {
         "llm_base_url": config.llm_base_url,
         "llm_model": config.llm_model,
-        "xhs_mcp_url": config.xhs_mcp_url,
+        "headless": config.headless,
         "has_llm_key": bool(config.llm_api_key),
         "has_jina_key": bool(config.jina_api_key),
         "has_tavily_key": bool(config.tavily_api_key),
@@ -78,8 +98,14 @@ async def get_config():
 @app.post("/api/config")
 async def save_config(req: ConfigRequest):
     """保存配置"""
+    global xhs_service, generator
     config = AppConfig(**req.model_dump())
     config_manager.save(config)
+    # 重新初始化服务（headless 可能变了）
+    if xhs_service:
+        await xhs_service.close()
+    xhs_service = XHSService(headless=config.headless)
+    generator = ContentGenerator(xhs_service=xhs_service)
     return {"success": True, "message": "配置已保存"}
 
 
@@ -131,6 +157,51 @@ async def get_history(limit: int = 50):
 async def get_stats():
     """获取统计"""
     return cache_manager.get_statistics()
+
+
+# ----------------------------------------------------------
+# 小红书服务 API
+# ----------------------------------------------------------
+
+@app.get("/api/xhs/login-status")
+async def login_status():
+    """检查小红书登录状态"""
+    result = await xhs_service.check_login_status()
+    return result
+
+
+@app.post("/api/xhs/login")
+async def login():
+    """获取登录二维码并等待扫码"""
+    result = await xhs_service.get_login_qrcode()
+    return result
+
+
+@app.post("/api/xhs/logout")
+async def logout():
+    """退出登录（清除 cookies）"""
+    result = await xhs_service.delete_cookies()
+    return result
+
+
+class SearchRequest(BaseModel):
+    keyword: str
+    sort_by: str = "综合"
+    note_type: str = "不限"
+
+
+@app.post("/api/xhs/search")
+async def search_feeds(req: SearchRequest):
+    """搜索小红书笔记"""
+    result = await xhs_service.search_feeds(req.keyword, req.sort_by, req.note_type)
+    return result
+
+
+@app.get("/api/xhs/feeds")
+async def list_feeds():
+    """获取推荐笔记"""
+    result = await xhs_service.list_feeds()
+    return result
 
 
 if __name__ == "__main__":

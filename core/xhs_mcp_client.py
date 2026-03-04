@@ -1,13 +1,24 @@
 """
-小红书 MCP 客户端 - 通过 MCP 协议与 xiaohongshu-mcp 服务通信
+小红书 MCP 客户端 - [已废弃] 
+
+此模块已被 xhs_service.py 替代。
+保留仅供参考，不再在主流程中使用。
+所有小红书操作现在通过 Playwright 浏览器自动化直接完成，无需外部 Go MCP 服务。
 """
+import warnings
+warnings.warn(
+    "xhs_mcp_client 已废弃，请使用 core.xhs_service.XHSService 替代",
+    DeprecationWarning,
+    stacklevel=2,
+)
+
 import httpx
 import json
 from typing import Dict, Optional
 
 
 class XHSMCPClient:
-    """小红书 MCP 客户端（使用 Streamable HTTP MCP 协议）"""
+    """小红书 MCP 客户端（已废弃 - 使用 XHSService 替代）"""
     
     def __init__(self, mcp_url: str = "http://localhost:18060/mcp"):
         self.mcp_url = mcp_url
