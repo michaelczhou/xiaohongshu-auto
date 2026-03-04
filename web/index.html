@@ -287,6 +287,109 @@
             padding: 4px;
             font-size: 14px;
         }
+        /* 统计卡片可点击 */
+        .stat-card.clickable {
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .stat-card.clickable:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+        }
+        .stat-card.clickable:active {
+            transform: translateY(0);
+        }
+        /* 弹窗 */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.45);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-overlay.visible {
+            display: flex;
+        }
+        .modal {
+            background: white;
+            border-radius: 16px;
+            width: 90%;
+            max-width: 700px;
+            max-height: 80vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            animation: modalIn 0.25s ease;
+        }
+        @keyframes modalIn {
+            from { transform: translateY(40px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 24px;
+            border-bottom: 1px solid #eee;
+        }
+        .modal-header h3 { color: #ff6b6b; font-size: 1.3em; margin: 0; }
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #999;
+            padding: 0;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+        }
+        .modal-close:hover { background: #f0f0f0; color: #333; transform: none; box-shadow: none; }
+        .modal-body {
+            padding: 16px 24px 24px;
+            overflow-y: auto;
+            flex: 1;
+        }
+        /* 可展开的任务卡片 */
+        .task-item { cursor: pointer; transition: box-shadow 0.2s; }
+        .task-item:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.12); }
+        .task-detail {
+            display: none;
+            margin-top: 10px;
+            padding: 12px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            font-size: 13px;
+            line-height: 1.7;
+            white-space: pre-wrap;
+            word-break: break-word;
+            color: #444;
+        }
+        .task-item.expanded .task-detail { display: block; }
+        .task-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 8px;
+        }
+        .task-tags span {
+            background: linear-gradient(135deg,#ff6b6b,#ff8e8e);
+            color: white;
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+        }
+        .task-expand-hint {
+            font-size: 12px;
+            color: #bbb;
+            float: right;
+        }
         @media (max-width: 768px) {
             .editor-container { grid-template-columns: 1fr; }
         }
@@ -302,23 +405,34 @@
             <button class="mode-tab" onclick="switchMode('manual')">✍️ 手动模式</button>
         </div>
         
-        <!-- 统计 -->
+        <!-- 统计（点击查看详情） -->
         <div class="stats" id="stats">
-            <div class="stat-card">
+            <div class="stat-card clickable" onclick="showTaskList(null, '全部任务')">
                 <div class="stat-value" id="stat-total">0</div>
                 <div class="stat-label">总任务</div>
             </div>
-            <div class="stat-card">
+            <div class="stat-card clickable" onclick="showTaskList('success', '✅ 成功任务')">
                 <div class="stat-value" id="stat-success">0</div>
                 <div class="stat-label">成功</div>
             </div>
-            <div class="stat-card">
+            <div class="stat-card clickable" onclick="showTaskList('failed', '❌ 失败任务')">
                 <div class="stat-value" id="stat-failed">0</div>
                 <div class="stat-label">失败</div>
             </div>
-            <div class="stat-card">
+            <div class="stat-card clickable" onclick="showTaskList('pending', '⏳ 进行中')">
                 <div class="stat-value" id="stat-pending">0</div>
                 <div class="stat-label">进行中</div>
+            </div>
+        </div>
+
+        <!-- 任务详情弹窗 -->
+        <div class="modal-overlay" id="task-modal" onclick="if(event.target===this)closeModal()">
+            <div class="modal">
+                <div class="modal-header">
+                    <h3 id="modal-title">任务列表</h3>
+                    <button class="modal-close" onclick="closeModal()">✕</button>
+                </div>
+                <div class="modal-body" id="modal-body"></div>
             </div>
         </div>
 
@@ -722,18 +836,38 @@
         }
 
         // ===== 历史 & 统计 =====
+        function renderTaskCard(t) {
+            const title = t.content?.title || t.topic || '无标题';
+            const content = t.content?.content || '';
+            const tags = t.content?.tags || [];
+            const statusIcon = t.status === 'success' ? '✅' : t.status === 'failed' ? '❌' : '⏳';
+            const tagsHtml = tags.length ? `<div class="task-tags">${tags.map(tg => `<span>#${tg}</span>`).join('')}</div>` : '';
+            return `
+                <div class="task-item ${t.status}" onclick="this.classList.toggle('expanded')">
+                    <div style="display:flex;justify-content:space-between;align-items:center;">
+                        <strong>${statusIcon} ${escHtml(title)}</strong>
+                        <span class="task-expand-hint">点击展开 ▾</span>
+                    </div>
+                    <p style="color:#999;font-size:13px;margin-top:4px;">${t.topic ? '主题: ' + escHtml(t.topic) + ' · ' : ''}${new Date(t.created_at).toLocaleString()}</p>
+                    <div class="task-detail">
+                        ${content ? '<p>' + escHtml(content).replace(/\n/g,'<br>') + '</p>' : '<p style="color:#bbb">无正文内容</p>'}
+                        ${tagsHtml}
+                    </div>
+                </div>
+            `;
+        }
+
+        function escHtml(s) {
+            if(!s) return '';
+            return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        }
+
         async function loadHistory() {
             const res = await fetch('/api/history');
             const history = await res.json();
             const div = document.getElementById('history');
             if(history.length === 0) { div.innerHTML = '<p>暂无记录</p>'; return; }
-            div.innerHTML = history.map(t => `
-                <div class="task-item ${t.status}">
-                    <strong>${t.topic}</strong>
-                    <p>${new Date(t.created_at).toLocaleString()}</p>
-                    <p>状态：${t.status}</p>
-                </div>
-            `).join('');
+            div.innerHTML = history.map(t => renderTaskCard(t)).join('');
         }
 
         async function loadStats() {
@@ -744,6 +878,32 @@
             document.getElementById('stat-failed').textContent = stats.failed || 0;
             document.getElementById('stat-pending').textContent = stats.pending || 0;
         }
+
+        // ===== 弹窗：按状态查看任务 =====
+        async function showTaskList(status, label) {
+            document.getElementById('modal-title').textContent = label;
+            const body = document.getElementById('modal-body');
+            body.innerHTML = '<p style="text-align:center;color:#999;">加载中...</p>';
+            document.getElementById('task-modal').classList.add('visible');
+            try {
+                const url = status ? `/api/history?status=${status}` : '/api/history';
+                const res = await fetch(url);
+                const list = await res.json();
+                if(list.length === 0) {
+                    body.innerHTML = '<p style="text-align:center;color:#bbb;padding:40px 0;">暂无记录</p>';
+                } else {
+                    body.innerHTML = list.map(t => renderTaskCard(t)).join('');
+                }
+            } catch(e) {
+                body.innerHTML = `<p style="color:red;">加载失败: ${e.message}</p>`;
+            }
+        }
+
+        function closeModal() {
+            document.getElementById('task-modal').classList.remove('visible');
+        }
+
+        document.addEventListener('keydown', e => { if(e.key === 'Escape') closeModal(); });
 
         // 初始化
         loadConfig();

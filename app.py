@@ -153,9 +153,9 @@ async def batch_generate(req: BatchGenerateRequest):
 
 
 @app.get("/api/history")
-async def get_history(limit: int = 50):
-    """获取历史记录"""
-    return cache_manager.get_history(limit=limit)
+async def get_history(limit: int = 50, status: str = None):
+    """获取历史记录，可按状态过滤"""
+    return cache_manager.get_history(limit=limit, status=status)
 
 
 @app.get("/api/stats")
