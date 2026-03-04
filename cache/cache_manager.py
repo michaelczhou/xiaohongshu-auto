@@ -42,7 +42,8 @@ class CacheManager:
         task_id = f"task_{len(history)}_{datetime.now().strftime('%Y%m%d%H%M%S')}"
         task["id"] = task_id
         task["created_at"] = datetime.now().isoformat()
-        task["status"] = "pending"
+        if "status" not in task:
+            task["status"] = "pending"
         history.append(task)
         self._history = history
         self._save_history()
